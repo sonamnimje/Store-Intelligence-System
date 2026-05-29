@@ -8,12 +8,11 @@ import cv2
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.analytics.rules import DetectionSummary, evaluate_events
+from backend.analytics.rules import DetectionSummary
 from backend.core.config import settings
 from backend.models.entities import CameraRecord, EventRecord
 from backend.services.alert_service import create_alert
-from backend.services.alert_dedup import filter_event_by_cooldown
-from backend.services.event_lifecycle import EventLifecycleManager
+from backend.services.event_manager import EventManager
 from backend.services.analytics_service import store_snapshot
 from backend.services.job_service import update_job
 from backend.websocket.manager import websocket_manager
@@ -38,11 +37,14 @@ async def save_upload(file: UploadFile) -> Path:
 async def process_video_file(session_factory, video_path: Path, task_id: str, camera_id: int = 1) -> dict:
     cap = cv2.VideoCapture(str(video_path))
     detector = ai_inference.create_pipeline(settings.yolo_model)
-    lifecycle_manager = EventLifecycleManager()
+    event_manager = EventManager()
     total_people = 0
     total_alerts = 0
     frame_index = 0
     zone_counts: dict[str, int] = {"main": 0, "restricted": 0}
+    last_tracked_people: list = []
+    last_density = 0.0
+    last_dwell_time = 0.0
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
     frame_interval_seconds = 1.0 / fps if fps and fps >= 1.0 else 1.0 / 30.0
 
@@ -62,69 +64,83 @@ async def process_video_file(session_factory, video_path: Path, task_id: str, ca
                 frame_index += 1
                 detections = detector.detect(frame, frame_index)
                 tracked_people = detector.track(detections, frame_index)
+                last_tracked_people = tracked_people
                 zone_counts = detector.zone_counts(tracked_people)
                 dwell_time = detector.estimate_dwell_time(tracked_people)
+                last_dwell_time = dwell_time
+                last_density = detector.estimate_density(frame, tracked_people)
                 summary = DetectionSummary(
                     camera_id=camera_id,
                     people_count=len(tracked_people),
-                    density=detector.estimate_density(frame, tracked_people),
+                    density=last_density,
                     dwell_time=dwell_time,
                     zone_counts=zone_counts,
+                    active_track_ids=[track.track_id for track in tracked_people],
                     lingering_ids=[],
                     restricted_zone_ids=detector.find_restricted_entries(tracked_people),
                     unusual_motion_ids=detector.find_unusual_motion(tracked_people),
                 )
 
                 elapsed_seconds = frame_index * frame_interval_seconds
-                events = lifecycle_manager.observe_lingering(
+                events = await event_manager.evaluate_frame(
+                    session,
                     camera_id=camera_id,
-                    tracked_objects=tracked_people,
                     frame_index=frame_index,
                     elapsed_seconds=elapsed_seconds,
-                    threshold_seconds=settings.event_linger_seconds,
-                    rearm_seconds=settings.event_linger_rearm_seconds,
+                    tracked_objects=tracked_people,
+                    summary=summary,
+                    overcrowd_threshold=settings.event_overcrowd_threshold,
+                    linger_seconds=settings.event_linger_seconds,
+                    density_threshold=settings.event_density_threshold,
+                    crowding_cooldown_seconds=settings.event_crowding_cooldown_seconds,
+                    theft_risk_cooldown_seconds=settings.event_theft_risk_cooldown_seconds,
+                    unusual_activity_cooldown_seconds=settings.event_unusual_activity_cooldown_seconds,
+                    lingering_cooldown_seconds=settings.event_lingering_cooldown_seconds,
                     exit_grace_frames=settings.event_exit_grace_frames,
-                )
-                events.extend(
-                    evaluate_events(
-                    summary,
-                    settings.event_overcrowd_threshold,
-                    settings.event_linger_seconds,
-                    settings.event_density_threshold,
-                    )
                 )
 
                 for event in events:
-                    filtered_metadata = await filter_event_by_cooldown(
-                        camera_id=camera_id,
-                        event_type=event["event_type"],
-                        metadata={**event["metadata"], "frame_index": frame_index},
-                        cooldown_seconds=settings.alert_cooldown_seconds,
-                    )
-                    if filtered_metadata is None:
+                    if event["action"] == "close":
+                        await session.execute(
+                            EventRecord.__table__.update()
+                            .where(EventRecord.event_id == event["event_id"])
+                            .values(
+                                last_seen_at=event["timestamp"],
+                                occurrence_count=event["metadata"].get("occurrence_count", 1),
+                                is_active=False,
+                                event_metadata=event["metadata"],
+                            )
+                        )
                         continue
 
-                    total_alerts += 1
-                    record = EventRecord(
-                        event_id=str(uuid4()),
+                    event_record = EventRecord(
+                        event_id=event["event_id"],
+                        event_key=event["event_key"],
                         timestamp=event["timestamp"],
+                        first_seen_at=event["timestamp"],
+                        last_seen_at=event["timestamp"],
                         event_type=event["event_type"],
                         severity=event["severity"],
                         camera_id=camera_id,
-                        event_metadata=filtered_metadata,
+                        track_id=event.get("track_id"),
+                        track_key=event.get("track_key"),
+                        track_ids=event.get("track_ids") or [],
+                        occurrence_count=1,
+                        is_active=True,
+                        event_metadata=event["metadata"],
                     )
-                    session.add(record)
+                    session.add(event_record)
+                    total_alerts += 1
                     alert = await create_alert(
                         session=session,
                         camera_id=camera_id,
                         severity=event["severity"],
                         message=f"{event['event_type'].replace('_', ' ').title()} detected",
-                        metadata=filtered_metadata,
+                        metadata=event["metadata"],
                     )
                     await websocket_manager.broadcast({"type": "alert", "payload": alert.alert_metadata | {"message": alert.message, "severity": alert.severity}})
 
                 total_people = max(total_people, len(tracked_people))
-                await store_snapshot(session, camera_id=camera_id, people_count=len(tracked_people), density=summary.density, alerts=total_alerts)
                 await websocket_manager.broadcast(
                     {
                         "type": "analytics",
@@ -144,8 +160,15 @@ async def process_video_file(session_factory, video_path: Path, task_id: str, ca
                     update_job(task_id, status="processing", progress=progress, message=f"Processed {frame_index} frames")
                     await websocket_manager.broadcast({"type": "job_status", "payload": await _job_payload(task_id)})
 
+                if frame_index % 30 == 0:
+                    await store_snapshot(session, camera_id=camera_id, people_count=len(tracked_people), density=summary.density, alerts=total_alerts)
+                    await event_manager.flush_active_incidents(session)
+                    await session.commit()
+
                 await asyncio.sleep(0)
 
+            await store_snapshot(session, camera_id=camera_id, people_count=len(last_tracked_people), density=last_density, alerts=total_alerts)
+            await event_manager.close_all(session)
             await session.commit()
 
         update_job(task_id, status="completed", progress=100, message="Processing complete")

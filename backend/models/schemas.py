@@ -7,10 +7,18 @@ class EventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     event_id: str
+    event_key: str | None = None
     timestamp: datetime
+    first_seen_at: datetime | None = None
+    last_seen_at: datetime | None = None
     event_type: str
     severity: str
     camera_id: int
+    track_id: int | None = None
+    track_key: str | None = None
+    track_ids: list[int] = Field(default_factory=list)
+    occurrence_count: int = 1
+    is_active: bool = True
     metadata: dict = Field(default_factory=dict, alias="event_metadata")
 
 

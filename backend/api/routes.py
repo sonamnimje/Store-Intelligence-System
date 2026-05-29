@@ -57,7 +57,7 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
 
 @router.get("/events", response_model=list[EventOut])
 async def get_events(db: AsyncSession = Depends(get_db)) -> list[EventOut]:
-    result = await db.execute(select(EventRecord).order_by(desc(EventRecord.timestamp)).limit(200))
+    result = await db.execute(select(EventRecord).order_by(desc(EventRecord.last_seen_at).nullslast(), desc(EventRecord.timestamp)).limit(200))
     events = list(result.scalars().all())
     return [EventOut.model_validate(event) for event in events]
 

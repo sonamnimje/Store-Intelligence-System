@@ -51,7 +51,6 @@ store-intelligence-system/
 ├── backend/
 ├── frontend/
 ├── ai_engine/
-├── ai-engine/
 ├── sample_data/
 ├── scripts/
 ├── docs/
@@ -86,6 +85,10 @@ Important variables:
 - `YOLO_MODEL` - Pretrained YOLOv8 model path or name.
 - `EVENT_OVERCROWD_THRESHOLD` - People count threshold for overcrowding.
 - `EVENT_LINGER_SECONDS` - Linger threshold in seconds.
+- `EVENT_CROWDING_COOLDOWN_SECONDS` - Cooldown for repeated crowding incidents.
+- `EVENT_THEFT_RISK_COOLDOWN_SECONDS` - Cooldown for repeated theft-risk incidents.
+- `EVENT_UNUSUAL_ACTIVITY_COOLDOWN_SECONDS` - Cooldown for repeated unusual-activity incidents.
+- `EVENT_LINGERING_COOLDOWN_SECONDS` - Cooldown for repeated lingering incidents.
 - `EVENT_DENSITY_THRESHOLD` - Crowd density threshold.
 - `DEMO_MODE` - Seeds demo analytics and event history on startup.
 

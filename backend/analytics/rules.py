@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 
@@ -11,9 +11,10 @@ class DetectionSummary:
     density: float
     dwell_time: float
     zone_counts: dict[str, int]
-    lingering_ids: list[int]
-    restricted_zone_ids: list[int]
-    unusual_motion_ids: list[int]
+    active_track_ids: list[int] = field(default_factory=list)
+    lingering_ids: list[int] = field(default_factory=list)
+    restricted_zone_ids: list[int] = field(default_factory=list)
+    unusual_motion_ids: list[int] = field(default_factory=list)
 
 
 def evaluate_events(summary: DetectionSummary, overcrowd_threshold: int, linger_seconds: int, density_threshold: float) -> list[dict]:
@@ -23,27 +24,21 @@ def evaluate_events(summary: DetectionSummary, overcrowd_threshold: int, linger_
     if summary.people_count >= overcrowd_threshold:
         events.append(
             {
-                "event_type": "overcrowding",
+                "event_type": "crowding",
                 "severity": "high",
                 "timestamp": now,
-                "metadata": {"people_count": summary.people_count, "threshold": overcrowd_threshold},
-            }
-        )
-
-    if summary.density >= density_threshold:
-        events.append(
-            {
-                "event_type": "high_customer_density",
-                "severity": "medium",
-                "timestamp": now,
-                "metadata": {"density": summary.density, "threshold": density_threshold},
+                "metadata": {
+                    "people_count": summary.people_count,
+                    "threshold": overcrowd_threshold,
+                    "track_ids": summary.active_track_ids,
+                },
             }
         )
 
     if summary.restricted_zone_ids:
         events.append(
             {
-                "event_type": "restricted_zone_entry",
+                "event_type": "theft_risk",
                 "severity": "high",
                 "timestamp": now,
                 "metadata": {"track_ids": summary.restricted_zone_ids},
@@ -53,7 +48,7 @@ def evaluate_events(summary: DetectionSummary, overcrowd_threshold: int, linger_
     if summary.unusual_motion_ids:
         events.append(
             {
-                "event_type": "unusual_movement",
+                "event_type": "unusual_activity",
                 "severity": "low",
                 "timestamp": now,
                 "metadata": {"track_ids": summary.unusual_motion_ids},

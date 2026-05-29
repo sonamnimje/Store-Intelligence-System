@@ -5,6 +5,21 @@ type EventTimelineProps = {
   loading?: boolean;
 };
 
+type GroupedEvent = {
+  key: string;
+  event_type: string;
+  severity: string;
+  camera_id: number;
+  timestamp: string;
+  first_seen_at?: string | null;
+  last_seen_at?: string | null;
+  event_ids: string[];
+  occurrence_count: number;
+  track_ids: number[];
+  metadata: Record<string, unknown>;
+  is_active: boolean;
+};
+
 function exportJson(events: any[]) {
   const blob = new Blob([JSON.stringify(events, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -28,7 +43,47 @@ function exportCsv(events: any[]) {
 }
 
 export function EventTimeline({ events, loading }: EventTimelineProps) {
-  const orderedEvents = [...events].sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
+  const groupedEvents = events.reduce<Map<string, GroupedEvent>>((groups, event) => {
+    const metadata = event.metadata ?? {};
+    const trackIds = Array.isArray(event.track_ids) && event.track_ids.length ? event.track_ids : Array.isArray(metadata.track_ids) ? metadata.track_ids.map(Number).filter(Number.isFinite) : event.track_id ? [event.track_id] : [];
+    const trackKey = event.track_key ?? (trackIds.length ? trackIds.map(String).sort().join('|') : 'camera');
+    const groupKey = event.event_key ?? `${event.camera_id}:${event.event_type}:${trackKey}`;
+    const current = groups.get(groupKey);
+    const timestamp = event.last_seen_at ?? event.timestamp;
+    const firstSeen = event.first_seen_at ?? event.timestamp;
+    const occurrenceCount = event.occurrence_count ?? 1;
+
+    if (current) {
+      current.occurrence_count += occurrenceCount;
+      current.event_ids.push(event.event_id);
+      current.first_seen_at = current.first_seen_at && new Date(current.first_seen_at).getTime() <= new Date(firstSeen).getTime() ? current.first_seen_at : firstSeen;
+      current.last_seen_at = current.last_seen_at && new Date(current.last_seen_at).getTime() >= new Date(timestamp).getTime() ? current.last_seen_at : timestamp;
+      current.timestamp = current.last_seen_at ?? timestamp;
+      current.track_ids = Array.from(new Set([...current.track_ids, ...trackIds])).sort((left, right) => left - right);
+      current.is_active = current.is_active || Boolean(event.is_active);
+      current.metadata = { ...current.metadata, ...metadata };
+      return groups;
+    }
+
+    groups.set(groupKey, {
+      key: groupKey,
+      event_type: event.event_type,
+      severity: event.severity,
+      camera_id: event.camera_id,
+      timestamp,
+      first_seen_at: firstSeen,
+      last_seen_at: event.last_seen_at ?? event.timestamp,
+      event_ids: [event.event_id],
+      occurrence_count,
+      track_ids: trackIds,
+      metadata,
+      is_active: Boolean(event.is_active),
+    });
+
+    return groups;
+  }, new Map());
+
+  const orderedEvents = [...groupedEvents.values()].sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
 
   return (
     <div className="rounded-3xl border border-white/10 bg-panel/90 p-5 shadow-glow">
@@ -56,13 +111,13 @@ export function EventTimeline({ events, loading }: EventTimelineProps) {
           <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-4 text-sm text-slate-400">No events available yet.</div>
         ) : (
           orderedEvents.map((event) => {
-            const metadata = event.metadata ?? {};
-            const trackIds = Array.isArray(metadata.track_ids) ? metadata.track_ids.map(String).join(', ') : metadata.track_id ? String(metadata.track_id) : null;
-            const durationSeconds = typeof metadata.duration_seconds === 'number' ? `${metadata.duration_seconds.toFixed(1)}s` : null;
-            const lifecycleState = typeof metadata.lifecycle_state === 'string' ? metadata.lifecycle_state : null;
+            const trackIds = event.track_ids.length ? event.track_ids.join(', ') : null;
+            const durationSeconds = event.first_seen_at && event.last_seen_at ? `${Math.max(0, Math.round((new Date(event.last_seen_at).getTime() - new Date(event.first_seen_at).getTime()) / 1000))}s` : null;
+            const lifecycleState = event.is_active ? 'active' : 'closed';
+            const title = event.event_type === 'suspicious_lingering' ? `Lingering detected for ${durationSeconds ?? '0s'}` : event.event_type === 'crowding' ? `Crowding detected ${event.occurrence_count > 1 ? `(${event.occurrence_count} updates)` : ''}`.trim() : `${event.event_type.replaceAll('_', ' ')} detected`;
 
             return (
-              <div key={event.event_id} className="animate-pop-in rounded-2xl border border-white/10 bg-slate-950/40 p-4 transition hover:border-cyan-400/30">
+              <div key={event.key} className="animate-pop-in rounded-2xl border border-white/10 bg-slate-950/40 p-4 transition hover:border-cyan-400/30">
                 <div className="grid gap-2 md:grid-cols-4">
                   <div>
                     <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Timestamp</p>
@@ -70,7 +125,7 @@ export function EventTimeline({ events, loading }: EventTimelineProps) {
                   </div>
                   <div>
                     <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Event Type</p>
-                    <p className="mt-1 text-sm text-slate-100">{event.event_type}</p>
+                    <p className="mt-1 text-sm text-slate-100">{title}</p>
                   </div>
                   <div>
                     <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Severity</p>
@@ -85,7 +140,8 @@ export function EventTimeline({ events, loading }: EventTimelineProps) {
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-300">
                     {trackIds && <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-1">Track {trackIds}</span>}
                     {durationSeconds && <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1">{durationSeconds} continuous</span>}
-                    {lifecycleState && <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 uppercase tracking-[0.18em]">{lifecycleState}</span>}
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 uppercase tracking-[0.18em]">{lifecycleState}</span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">{event.occurrence_count} updates</span>
                   </div>
                 )}
               </div>

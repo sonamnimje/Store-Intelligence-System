@@ -20,10 +20,18 @@ export interface AlertItem {
 
 export interface EventItem {
   event_id: string;
+  event_key?: string | null;
   timestamp: string;
+  first_seen_at?: string | null;
+  last_seen_at?: string | null;
   event_type: string;
   severity: string;
   camera_id: number;
+  track_id?: number | null;
+  track_key?: string | null;
+  track_ids?: number[];
+  occurrence_count?: number;
+  is_active?: boolean;
   metadata: Record<string, unknown>;
 }
 
