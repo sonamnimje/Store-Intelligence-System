@@ -74,7 +74,7 @@ export function EventTimeline({ events, loading }: EventTimelineProps) {
       first_seen_at: firstSeen,
       last_seen_at: event.last_seen_at ?? event.timestamp,
       event_ids: [event.event_id],
-      occurrence_count,
+        occurrence_count: occurrenceCount,
       track_ids: trackIds,
       metadata,
       is_active: Boolean(event.is_active),
@@ -114,7 +114,8 @@ export function EventTimeline({ events, loading }: EventTimelineProps) {
             const trackIds = event.track_ids.length ? event.track_ids.join(', ') : null;
             const durationSeconds = event.first_seen_at && event.last_seen_at ? `${Math.max(0, Math.round((new Date(event.last_seen_at).getTime() - new Date(event.first_seen_at).getTime()) / 1000))}s` : null;
             const lifecycleState = event.is_active ? 'active' : 'closed';
-            const title = event.event_type === 'suspicious_lingering' ? `Lingering detected for ${durationSeconds ?? '0s'}` : event.event_type === 'crowding' ? `Crowding detected ${event.occurrence_count > 1 ? `(${event.occurrence_count} updates)` : ''}`.trim() : `${event.event_type.replaceAll('_', ' ')} detected`;
+            const normalizedEventType = event.event_type.split('_').join(' ');
+            const title = event.event_type === 'suspicious_lingering' ? `Lingering detected for ${durationSeconds ?? '0s'}` : event.event_type === 'crowding' ? `Crowding detected ${event.occurrence_count > 1 ? `(${event.occurrence_count} updates)` : ''}`.trim() : `${normalizedEventType} detected`;
 
             return (
               <div key={event.key} className="animate-pop-in rounded-2xl border border-white/10 bg-slate-950/40 p-4 transition hover:border-cyan-400/30">

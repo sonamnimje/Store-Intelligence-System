@@ -23,7 +23,7 @@ export function AlertsPanel({ alerts, loading }: { alerts: AlertItem[]; loading?
           alerts.map((alert) => (
             <div key={alert.alert_id ?? alert.message} className="animate-pop-in rounded-2xl border border-white/10 bg-slate-950/40 p-4 transition hover:border-cyan-400/30">
               <div className="flex items-center justify-between gap-3">
-                <p className="font-medium text-slate-100">{alert.message ?? alert.event_type}</p>
+                <p className="font-medium text-slate-100">{alert.message}</p>
                 <span className="rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-1 text-xs uppercase tracking-[0.2em] text-amber-200">
                   {alert.severity ?? 'medium'}
                 </span>
