@@ -1,0 +1,11 @@
+{
+  "camera_id": 1,
+  "people_count": 12,
+  "density": 0.32,
+  "alerts": 3,
+  "events": [
+    {"event_type": "overcrowding", "severity": "high"},
+    {"event_type": "suspicious_lingering", "severity": "medium"},
+    {"event_type": "restricted_zone_entry", "severity": "high"}
+  ]
+}
