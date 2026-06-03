@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://store-intelligence-system-r18r.onrender.com';
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
 
 async function request<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`);
