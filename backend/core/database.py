@@ -55,6 +55,9 @@ async def _ensure_event_schema(connection) -> None:
             "track_ids": "ALTER TABLE events ADD COLUMN track_ids JSON",
             "occurrence_count": "ALTER TABLE events ADD COLUMN occurrence_count INTEGER DEFAULT 1",
             "is_active": "ALTER TABLE events ADD COLUMN is_active BOOLEAN DEFAULT 1",
+            "confidence": "ALTER TABLE events ADD COLUMN confidence FLOAT DEFAULT 0",
+            "duration_seconds": "ALTER TABLE events ADD COLUMN duration_seconds FLOAT DEFAULT 0",
+            "status": "ALTER TABLE events ADD COLUMN status VARCHAR(16) DEFAULT 'active'",
         }
         for column_name, statement in column_definitions.items():
             if column_name not in existing_columns:
@@ -75,6 +78,9 @@ async def _ensure_event_schema(connection) -> None:
         "track_ids": "ALTER TABLE events ADD COLUMN track_ids JSON",
         "occurrence_count": "ALTER TABLE events ADD COLUMN occurrence_count INTEGER DEFAULT 1",
         "is_active": "ALTER TABLE events ADD COLUMN is_active BOOLEAN DEFAULT TRUE",
+        "confidence": "ALTER TABLE events ADD COLUMN confidence FLOAT DEFAULT 0",
+        "duration_seconds": "ALTER TABLE events ADD COLUMN duration_seconds FLOAT DEFAULT 0",
+        "status": "ALTER TABLE events ADD COLUMN status VARCHAR(16) DEFAULT 'active'",
     }
     for column_name, statement in add_statements.items():
         if column_name not in existing_columns:

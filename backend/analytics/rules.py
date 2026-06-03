@@ -24,13 +24,15 @@ def evaluate_events(summary: DetectionSummary, overcrowd_threshold: int, linger_
     if summary.people_count >= overcrowd_threshold:
         events.append(
             {
-                "event_type": "crowding",
+                "event_type": "crowd_density",
                 "severity": "high",
+                "confidence": min(0.99, 0.75 + (summary.density * 0.2) + (summary.people_count / max(overcrowd_threshold, 1) * 0.05)),
                 "timestamp": now,
                 "metadata": {
                     "people_count": summary.people_count,
                     "threshold": overcrowd_threshold,
                     "track_ids": summary.active_track_ids,
+                    "status": "active",
                 },
             }
         )
@@ -38,20 +40,32 @@ def evaluate_events(summary: DetectionSummary, overcrowd_threshold: int, linger_
     if summary.restricted_zone_ids:
         events.append(
             {
-                "event_type": "theft_risk",
+                "event_type": "restricted_zone",
                 "severity": "high",
+                "confidence": 0.96,
                 "timestamp": now,
-                "metadata": {"track_ids": summary.restricted_zone_ids},
+                "metadata": {"track_ids": summary.restricted_zone_ids, "status": "active"},
+            }
+        )
+
+        events.append(
+            {
+                "event_type": "intrusion",
+                "severity": "high",
+                "confidence": 0.93,
+                "timestamp": now,
+                "metadata": {"track_ids": summary.restricted_zone_ids, "status": "active"},
             }
         )
 
     if summary.unusual_motion_ids:
         events.append(
             {
-                "event_type": "unusual_activity",
+                "event_type": "abandoned_object",
                 "severity": "low",
+                "confidence": 0.72,
                 "timestamp": now,
-                "metadata": {"track_ids": summary.unusual_motion_ids},
+                "metadata": {"track_ids": summary.unusual_motion_ids, "status": "active"},
             }
         )
 

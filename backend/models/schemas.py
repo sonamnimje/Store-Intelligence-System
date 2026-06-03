@@ -19,6 +19,9 @@ class EventOut(BaseModel):
     track_ids: list[int] = Field(default_factory=list)
     occurrence_count: int = 1
     is_active: bool = True
+    confidence: float = 0.0
+    duration_seconds: float = 0.0
+    status: str = "active"
     metadata: dict = Field(default_factory=dict, alias="event_metadata")
 
 
@@ -44,6 +47,7 @@ class AnalyticsOut(BaseModel):
     camera_id: int
     updated_at: datetime
     trends: list[dict] = Field(default_factory=list)
+    camera_activity: list[dict] = Field(default_factory=list)
 
 
 class CameraStatusOut(BaseModel):

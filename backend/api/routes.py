@@ -59,7 +59,17 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
 async def get_events(db: AsyncSession = Depends(get_db)) -> list[EventOut]:
     result = await db.execute(select(EventRecord).order_by(desc(EventRecord.last_seen_at).nullslast(), desc(EventRecord.timestamp)).limit(200))
     events = list(result.scalars().all())
-    return [EventOut.model_validate(event) for event in events]
+    out: list[EventOut] = []
+    for event in events:
+        # Some DB rows may have None for optional list fields; coerce to empty lists for validation
+        if getattr(event, 'track_ids', None) is None:
+            try:
+                setattr(event, 'track_ids', [])
+            except Exception:
+                # if attribute assignment fails, fall back to constructing dict
+                pass
+        out.append(EventOut.model_validate(event))
+    return out
 
 
 @router.get("/analytics", response_model=AnalyticsOut)
@@ -97,6 +107,11 @@ async def get_camera_status(db: AsyncSession = Depends(get_db)) -> list[CameraSt
             )
         )
     return statuses
+
+
+@router.get("/cameras", response_model=list[CameraStatusOut])
+async def get_cameras(db: AsyncSession = Depends(get_db)) -> list[CameraStatusOut]:
+    return await get_camera_status(db)
 
 
 @router.get("/processing-status/{task_id}", response_model=JobStatusOut)

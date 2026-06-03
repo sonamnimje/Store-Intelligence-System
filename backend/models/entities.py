@@ -37,6 +37,9 @@ class EventRecord(Base):
     track_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
     occurrence_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    duration_seconds: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
     event_metadata: Mapped[dict] = mapped_column("metadata", JSON, default=dict, nullable=False)
 
 

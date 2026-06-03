@@ -7,6 +7,7 @@ export interface AnalyticsResponse {
   camera_id: number;
   updated_at: string;
   trends: Array<{ label: string; value: number; severity: string }>;
+  camera_activity?: Array<{ camera_id: number; value: number; status: string; confidence: number }>;
 }
 
 export interface AlertItem {
@@ -32,6 +33,9 @@ export interface EventItem {
   track_ids?: number[];
   occurrence_count?: number;
   is_active?: boolean;
+  confidence?: number;
+  duration_seconds?: number;
+  status?: string;
   metadata: Record<string, unknown>;
 }
 

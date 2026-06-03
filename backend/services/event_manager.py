@@ -30,6 +30,9 @@ class IncidentState:
     first_seen_frame: int
     last_seen_frame: int
     occurrence_count: int = 1
+    confidence: float = 0.0
+    duration_seconds: float = 0.0
+    status: str = "active"
     dirty: bool = True
 
 
@@ -118,6 +121,9 @@ class EventManager:
                     last_seen_at=incident.last_seen_at,
                     occurrence_count=incident.occurrence_count,
                     is_active=True,
+                        confidence=incident.confidence,
+                        duration_seconds=duration_seconds,
+                        status=incident.status,
                     event_metadata={
                         "track_id": incident.track_id,
                         "track_key": incident.track_key,
@@ -141,6 +147,9 @@ class EventManager:
                     last_seen_at=incident.last_seen_at,
                     occurrence_count=incident.occurrence_count,
                     is_active=False,
+                        confidence=incident.confidence,
+                        duration_seconds=max(0.0, (incident.last_seen_at - incident.first_seen_at).total_seconds()),
+                        status="closed",
                     event_metadata={
                         "track_id": incident.track_id,
                         "track_key": incident.track_key,
@@ -226,6 +235,9 @@ class EventManager:
                 last_seen_at=timestamp,
                 first_seen_frame=state["first_seen_frame"],
                 last_seen_frame=frame_index,
+                confidence=min(0.99, 0.6 + (active_duration / max(linger_seconds, 1)) * 0.4),
+                duration_seconds=active_duration,
+                status="active",
             )
             self._active_incidents[event_key] = incident
             self.cooldown_manager.mark_emitted(camera_id, "suspicious_lingering", str(track.track_id), "medium", event_id)
@@ -251,6 +263,8 @@ class EventManager:
                         "last_seen_at": timestamp.isoformat(),
                         "duration_seconds": round(active_duration, 2),
                         "linger_seconds": linger_seconds,
+                        "confidence": round(min(0.99, 0.6 + (active_duration / max(linger_seconds, 1)) * 0.4), 2),
+                        "status": "active",
                         "continuous": True,
                         "lifecycle_state": "triggered",
                     },
@@ -291,6 +305,8 @@ class EventManager:
                             "last_seen_at": timestamp.isoformat(),
                             "duration_seconds": round(max(0.0, (timestamp - incident.first_seen_at).total_seconds()), 2),
                             "occurrence_count": incident.occurrence_count,
+                            "confidence": round(incident.confidence, 2),
+                            "status": "closed",
                             "lifecycle_state": "closed",
                         },
                     }
@@ -317,7 +333,7 @@ class EventManager:
             track_ids = [track_ids]
         normalized_track_ids = sorted({int(track_id) for track_id in track_ids if str(track_id).isdigit()})
         event_type = self._normalize_event_type(event["event_type"])
-        track_key = "camera" if event_type == "crowding" else ("|".join(str(track_id) for track_id in normalized_track_ids) if normalized_track_ids else "camera")
+        track_key = "camera" if event_type == "crowd_density" else ("|".join(str(track_id) for track_id in normalized_track_ids) if normalized_track_ids else "camera")
         event_key = self.build_event_key(camera_id, event_type, track_key)
 
         self._current_frame_keys.add(event_key)
@@ -327,6 +343,7 @@ class EventManager:
             incident.last_seen_at = timestamp
             incident.last_seen_frame = frame_index
             incident.occurrence_count += 1
+            incident.duration_seconds = max(0.0, (timestamp - incident.first_seen_at).total_seconds())
             incident.dirty = True
             return []
 
@@ -349,6 +366,9 @@ class EventManager:
             last_seen_at=timestamp,
             first_seen_frame=frame_index,
             last_seen_frame=frame_index,
+            confidence=float(event.get("confidence", 0.85)),
+            duration_seconds=0.0,
+            status="active",
         )
         self._active_incidents[event_key] = incident
         self.cooldown_manager.mark_emitted(camera_id, event_type, track_key, severity, event_id)
@@ -373,6 +393,8 @@ class EventManager:
                     "first_seen_at": timestamp.isoformat(),
                     "last_seen_at": timestamp.isoformat(),
                     "occurrence_count": 1,
+                    "confidence": round(float(event.get("confidence", 0.85)), 2),
+                    "status": "active",
                     "lifecycle_state": "triggered",
                 },
             }
@@ -394,6 +416,8 @@ class EventManager:
 
             incident.last_seen_at = timestamp
             incident.last_seen_frame = incident.last_seen_frame
+            incident.duration_seconds = max(0.0, (timestamp - incident.first_seen_at).total_seconds())
+            incident.status = "closed"
             incident.dirty = True
             closed.append(
                 {
@@ -414,6 +438,8 @@ class EventManager:
                         "first_seen_at": incident.first_seen_at.isoformat(),
                         "last_seen_at": timestamp.isoformat(),
                         "occurrence_count": incident.occurrence_count,
+                        "confidence": round(incident.confidence, 2),
+                        "status": "closed",
                         "lifecycle_state": "closed",
                     },
                 }
@@ -435,9 +461,12 @@ class EventManager:
     @staticmethod
     def _normalize_event_type(event_type: str) -> str:
         mapping = {
-            "overcrowding": "crowding",
-            "high_customer_density": "crowding",
-            "restricted_zone_entry": "theft_risk",
-            "unusual_movement": "unusual_activity",
+            "overcrowding": "crowd_density",
+            "high_customer_density": "crowd_density",
+            "restricted_zone_entry": "intrusion",
+            "theft_risk": "intrusion",
+            "unusual_movement": "abandoned_object",
+            "unusual_activity": "abandoned_object",
+            "crowding": "crowd_density",
         }
         return mapping.get(event_type, event_type)

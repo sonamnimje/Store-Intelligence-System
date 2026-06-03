@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchAlerts, fetchAnalytics, fetchCameraStatus, fetchEvents, fetchProcessingStatus, uploadVideo } from './services/api';
 import { connectLiveFeed } from './services/socket';
-import { DashboardPage, type ToastItem } from './pages/DashboardPage';
+import VisualDashboard from './pages/VisualDashboard';
+import ErrorBoundary from './components/ErrorBoundary';
 import type { AlertItem, AnalyticsResponse, CameraStatusItem, EventItem, JobStatusItem } from './types/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000';
@@ -14,6 +15,7 @@ const ALERT_ACTIVE_TTL_MS = 45_000;
 const ALERT_DUPLICATE_COOLDOWN_MS = 12_000;
 
 function App() {
+  
   const [analytics, setAnalytics] = useState<AnalyticsResponse | null>(null);
   const [alerts, setAlerts] = useState<ActiveAlert[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
@@ -24,6 +26,7 @@ function App() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadMessage, setUploadMessage] = useState('Choose a CCTV recording to start analysis.');
   const [isLoading, setIsLoading] = useState(true);
+  type ToastItem = { id: string; title: string; message: string; tone: 'success' | 'info' | 'warning' | 'danger' };
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const alertCooldownRef = useRef<Map<string, number>>(new Map());
@@ -197,24 +200,11 @@ function App() {
   const trendData = useMemo(() => analytics?.trends ?? [], [analytics]);
 
   return (
-    <DashboardPage
-      apiBase={API_BASE}
-      analytics={analytics}
-      alerts={alerts}
-      cameras={cameras}
-      events={events}
-      isLoading={isLoading}
-      isRefreshing={isRefreshing}
-      uploadStatus={uploadStatus}
-      uploadProgress={uploadProgress}
-      uploadMessage={uploadMessage}
-      selectedFile={selectedFile}
-      trendData={trendData}
-      toasts={toasts}
-      onPickFile={setSelectedFile}
-      onUpload={handleUpload}
-      onRefresh={refreshDashboard}
-    />
+    <>
+      <ErrorBoundary>
+        <VisualDashboard />
+      </ErrorBoundary>
+    </>
   );
 }
 

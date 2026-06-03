@@ -18,6 +18,9 @@ type GroupedEvent = {
   track_ids: number[];
   metadata: Record<string, unknown>;
   is_active: boolean;
+  confidence: number;
+  duration_seconds: number;
+  status: string;
 };
 
 function exportJson(events: any[]) {
@@ -52,6 +55,10 @@ export function EventTimeline({ events, loading }: EventTimelineProps) {
     const timestamp = event.last_seen_at ?? event.timestamp;
     const firstSeen = event.first_seen_at ?? event.timestamp;
     const occurrenceCount = event.occurrence_count ?? 1;
+    const metadataConfidence = typeof metadata.confidence === 'number' ? metadata.confidence : Number(metadata.confidence ?? 0);
+    const confidence = event.confidence ?? (Number.isFinite(metadataConfidence) ? metadataConfidence : 0);
+    const durationSecondsValue = event.duration_seconds ?? (event.first_seen_at && event.last_seen_at ? Math.max(0, Math.round((new Date(event.last_seen_at).getTime() - new Date(event.first_seen_at).getTime()) / 1000)) : 0);
+    const status = event.status ?? (event.is_active ? 'active' : 'closed');
 
     if (current) {
       current.occurrence_count += occurrenceCount;
@@ -61,6 +68,9 @@ export function EventTimeline({ events, loading }: EventTimelineProps) {
       current.timestamp = current.last_seen_at ?? timestamp;
       current.track_ids = Array.from(new Set([...current.track_ids, ...trackIds])).sort((left, right) => left - right);
       current.is_active = current.is_active || Boolean(event.is_active);
+      current.confidence = Math.max(current.confidence, confidence);
+      current.duration_seconds = Math.max(current.duration_seconds, durationSecondsValue);
+      current.status = current.is_active ? 'active' : status;
       current.metadata = { ...current.metadata, ...metadata };
       return groups;
     }
@@ -78,6 +88,9 @@ export function EventTimeline({ events, loading }: EventTimelineProps) {
       track_ids: trackIds,
       metadata,
       is_active: Boolean(event.is_active),
+        confidence,
+        duration_seconds: durationSecondsValue,
+        status,
     });
 
     return groups;
@@ -112,10 +125,10 @@ export function EventTimeline({ events, loading }: EventTimelineProps) {
         ) : (
           orderedEvents.map((event) => {
             const trackIds = event.track_ids.length ? event.track_ids.join(', ') : null;
-            const durationSeconds = event.first_seen_at && event.last_seen_at ? `${Math.max(0, Math.round((new Date(event.last_seen_at).getTime() - new Date(event.first_seen_at).getTime()) / 1000))}s` : null;
-            const lifecycleState = event.is_active ? 'active' : 'closed';
+            const durationSeconds = `${Math.max(0, Math.round(event.duration_seconds))}s`;
+            const lifecycleState = event.status;
             const normalizedEventType = event.event_type.split('_').join(' ');
-            const title = event.event_type === 'suspicious_lingering' ? `Lingering detected for ${durationSeconds ?? '0s'}` : event.event_type === 'crowding' ? `Crowding detected ${event.occurrence_count > 1 ? `(${event.occurrence_count} updates)` : ''}`.trim() : `${normalizedEventType} detected`;
+            const title = event.event_type === 'suspicious_lingering' ? `Lingering detected for ${durationSeconds}` : event.event_type === 'crowd_density' ? `Crowd density detected ${event.occurrence_count > 1 ? `(${event.occurrence_count} updates)` : ''}`.trim() : `${normalizedEventType} detected`;
 
             return (
               <div key={event.key} className="animate-pop-in rounded-2xl border border-white/10 bg-slate-950/40 p-4 transition hover:border-cyan-400/30">
@@ -142,6 +155,7 @@ export function EventTimeline({ events, loading }: EventTimelineProps) {
                     {trackIds && <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-1">Track {trackIds}</span>}
                     {durationSeconds && <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1">{durationSeconds} continuous</span>}
                     <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 uppercase tracking-[0.18em]">{lifecycleState}</span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">Confidence {event.confidence?.toFixed(2) ?? '0.00'}</span>
                     <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">{event.occurrence_count} updates</span>
                   </div>
                 )}

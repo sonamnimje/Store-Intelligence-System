@@ -14,18 +14,38 @@ export const fetchEvents = () => request<import('../types/api').EventItem[]>('/e
 export const fetchCameraStatus = () => request<import('../types/api').CameraStatusItem[]>('/camera-status');
 export const fetchProcessingStatus = (taskId: string) => request<import('../types/api').JobStatusItem>(`/processing-status/${taskId}`);
 
-export async function uploadVideo(file: File) {
-  const formData = new FormData();
-  formData.append('file', file);
+export async function uploadVideo(file: File, onProgress?: (percent: number) => void) {
+  return new Promise<any>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE}/upload-video`);
 
-  const response = await fetch(`${API_BASE}/upload-video`, {
-    method: 'POST',
-    body: formData,
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const json = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+          resolve(json);
+        } catch (err) {
+          resolve({});
+        }
+      } else {
+        const body = xhr.responseText || '';
+        reject(new Error(`Upload failed: ${xhr.status} ${body}`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Upload failed'));
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        const pct = Math.round((event.loaded / event.total) * 100);
+        try {
+          onProgress(pct);
+        } catch (_) {}
+      }
+    };
+
+    const fd = new FormData();
+    fd.append('file', file);
+    xhr.send(fd);
   });
-
-  if (!response.ok) {
-    throw new Error(`Upload failed: ${response.status}`);
-  }
-
-  return response.json();
 }

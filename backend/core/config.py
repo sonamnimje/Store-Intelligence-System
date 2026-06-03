@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     demo_mode: bool = True
     database_url: str = "sqlite+aiosqlite:///./store_intelligence.db"
-    allowed_origins: list[str] = ["http://localhost:5173"]
+    # include both localhost and 127.0.0.1 hosts for dev servers
+    allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     yolo_model: str = "yolov8n.pt"
     max_upload_mb: int = Field(default=200, ge=1, le=2048)
     event_overcrowd_threshold: int = Field(default=8, ge=1, le=500)

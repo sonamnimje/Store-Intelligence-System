@@ -47,6 +47,8 @@ async def build_analytics_payload(session: AsyncSession, camera_id: int = 1) -> 
     for label, value in counts.items():
         trends.append({"label": label, "value": value, "severity": severities[label]})
 
+    camera_activity = [{"camera_id": event.camera_id, "value": event.occurrence_count, "status": event.status, "confidence": event.confidence} for event in trend_events[:6]]
+
     return {
         "people_count": snapshot.people_count,
         "density": snapshot.density,
@@ -56,4 +58,5 @@ async def build_analytics_payload(session: AsyncSession, camera_id: int = 1) -> 
         "camera_id": camera_id,
         "updated_at": snapshot.updated_at,
         "trends": trends,
+        "camera_activity": camera_activity,
     }
